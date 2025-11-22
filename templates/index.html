@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="text-center my-4">
+  <h1>CareLink Demo</h1>
+  <p class="text-muted">Choose a demo view:</p>
+
+  <div class="d-flex justify-content-center gap-3 mt-3">
+    <a href="{{ url_for('patient_dashboard', patient_id='P001') }}"
+       class="btn btn-primary">
+      Patient view (P001)
+    </a>
+    <a href="{{ url_for('pharm_login') }}"
+       class="btn btn-outline-secondary">
+      Pharmacist view
+    </a>
+  </div>
+</div>
+{% endblock %}

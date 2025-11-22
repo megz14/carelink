@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Pharmacist Dashboard</h2>
+<p><a href="{{ url_for('pharm_logout') }}" class="btn btn-sm btn-outline-secondary">Logout</a></p>
+<ul>
+  {% for p in patients %}
+    <li>
+      <a href="{{ url_for('pharm_view_patient', patient_id=p['patient_id']) }}">
+        {{ p['name'] }} ({{ p['patient_id'] }})
+      </a>
+    </li>
+  {% endfor %}
+</ul>
+{% endblock %}

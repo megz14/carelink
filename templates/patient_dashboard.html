@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Hi, {{ patient['name'] }} ({{ patient['patient_id'] }})</h2>
+
+<div class="row my-3">
+  <!-- 왼쪽 컬럼: BP, 동의, 질환 태그, 접근 로그 -->
+  <div class="col-md-4">
+    <!-- Latest BP -->
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5>Latest Blood Pressure</h5>
+        {% if readings %}
+          {% set latest = readings[0] %}
+          <p class="fs-4">
+            {{ latest['systolic'] }}/{{ latest['diastolic'] }} mmHg
+          </p>
+          <p class="text-muted small">Last updated: {{ latest['timestamp'] }}</p>
+        {% else %}
+          <p>No readings yet.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Consent switch -->
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5>Share data with pharmacist</h5>
+        <form method="POST" action="{{ url_for('update_consent', patient_id=patient['patient_id']) }}">
+          <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" name="consent"
+                   id="consentSwitch" {% if patient['consent'] == 1 %}checked{% endif %}>
+            <label class="form-check-label" for="consentSwitch">
+              Allow access to my data
+            </label>
+          </div>
+          <button class="btn btn-sm btn-primary" type="submit">Save</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- My conditions (HTN / DM / DLD) -->
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5>My conditions</h5>
+        {% set conds = (patient['conditions'] or '').split(',') %}
+        <form method="POST" action="{{ url_for('update_conditions', patient_id=patient['patient_id']) }}">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="conditions" value="HTN"
+                   id="condHTN" {% if 'HTN' in conds %}checked{% endif %}>
+            <label class="form-check-label" for="condHTN">Hypertension</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="conditions" value="DM"
+                   id="condDM" {% if 'DM' in conds %}checked{% endif %}>
+            <label class="form-check-label" for="condDM">Diabetes</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="conditions" value="DLD"
+                   id="condDLD" {% if 'DLD' in conds %}checked{% endif %}>
+            <label class="form-check-label" for="condDLD">Dyslipidemia</label>
+          </div>
+          <button class="btn btn-sm btn-outline-primary mt-2" type="submit">Save conditions</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Access log -->
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5>Who accessed my record?</h5>
+        {% if accesses %}
+          <ul class="small mb-0">
+            {% for a in accesses %}
+              <li>{{ a['timestamp'] }} – {{ a['actor'] }} ({{ a['role'] }})</li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-muted small mb-0">No recent access.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- 오른쪽 컬럼: BP 입력, 약 + AI 스캔, Symptom notes -->
+  <div class="col-md-8">
+    <!-- Add BP -->
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5>Add Blood Pressure</h5>
+        <form method="POST" action="{{ url_for('add_bp', patient_id=patient['patient_id']) }}" class="row g-2">
+          <div class="col-4">
+            <input class="form-control" name="systolic" placeholder="Systolic" required>
+          </div>
+          <div class="col-4">
+            <input class="form-control" name="diastolic" placeholder="Diastolic" required>
+          </div>
+          <div class="col-4">
+            <input class="form-control" name="heart_rate" placeholder="Heart rate (optional)">
+          </div>
+          <div class="col-12 mt-2">
+            <button class="btn btn-success" type="submit">Save BP</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Medications + AI scan -->
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5>Your Medications</h5>
+        <ul>
+          {% for m in meds %}
+            <li>{{ m['name'] }} – {{ m['dose'] }} – {{ m['frequency'] }}</li>
+          {% endfor %}
+        </ul>
+        <form method="POST" action="{{ url_for('add_med', patient_id=patient['patient_id']) }}" class="row g-2">
+          <div class="col-md-4">
+            <input class="form-control" name="name" placeholder="Name" required>
+          </div>
+          <div class="col-md-4">
+            <input class="form-control" name="dose" placeholder="Dose">
+          </div>
+          <div class="col-md-4">
+            <input class="form-control" name="frequency" placeholder="Frequency">
+          </div>
+          <div class="col-12 mt-2">
+            <button class="btn btn-outline-primary btn-sm" type="submit">Add Medication</button>
+          </div>
+        </form>
+
+        <hr>
+        <h6>Or scan medication label with AI</h6>
+        <form id="scan-form" class="mb-2">
+          <input type="file" id="scan-image" accept="image/*" class="form-control mb-2">
+          <button type="button" class="btn btn-sm btn-secondary"
+                  onclick="scanMedication('{{ patient['patient_id'] }}')">
+            Scan with AI
+          </button>
+        </form>
+        <div id="scan-result" class="small text-muted"></div>
+      </div>
+    </div>
+
+    <!-- Symptom notes -->
+    <div class="card mb-3">
+      <div class="card-body">
+        <h5>Symptom notes</h5>
+        <form method="POST" action="{{ url_for('add_symptom', patient_id=patient['patient_id']) }}">
+          <textarea class="form-control mb-2" name="note" rows="2"
+            placeholder="e.g., Headache + BP 160/100 tonight."></textarea>
+          <button class="btn btn-sm btn-outline-primary" type="submit">Add note</button>
+        </form>
+        {% if symptoms %}
+          <ul class="small mt-2 mb-0">
+            {% for s in symptoms %}
+              <li>{{ s['timestamp'] }} – {{ s['note'] }}</li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-muted small mb-0">No symptom notes yet.</p>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}

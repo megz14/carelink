@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Patient: {{ patient['name'] }} ({{ patient['patient_id'] }})</h2>
+
+{% if patient['conditions'] %}
+  {% set conds = patient['conditions'].split(',') %}
+  <div class="mb-3">
+    {% for c in conds %}
+      {% if c == 'HTN' %}
+        <span class="badge bg-danger me-1">Hypertension</span>
+      {% elif c == 'DM' %}
+        <span class="badge bg-warning text-dark me-1">Diabetes</span>
+      {% elif c == 'DLD' %}
+        <span class="badge bg-primary me-1">Dyslipidemia</span>
+      {% endif %}
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% if review_due %}
+<div class="alert alert-warning">
+  Medication review is due (≥5 active meds and last review ≥ 6 months ago or not done).
+  <form method="POST" action="{{ url_for('mark_med_review', patient_id=patient['patient_id']) }}" class="d-inline">
+    <button class="btn btn-sm btn-outline-dark" type="submit">Mark as reviewed</button>
+  </form>
+</div>
+{% endif %}
+
+{% if bp_status %}
+<div class="alert alert-{{ bp_status_class }}">
+  BP control: {{ bp_status }}
+</div>
+{% endif %}
+
+<div class="alert alert-info">
+  MTM Risk: {{ mtm_level }} (score: {{ mtm_score }})
+</div>
+
+{% if alert_msg %}
+<div class="alert alert-warning">{{ alert_msg }}</div>
+{% endif %}
+
+<div class="row my-3">
+  <div class="col-md-6">
+    <h5>BP Trend</h5>
+    <canvas id="bpChart"></canvas>
+  </div>
+  <div class="col-md-6">
+    <h5>Medications</h5>
+    <ul>
+      {% for m in meds %}
+        <li>{{ m['name'] }} – {{ m['dose'] }} – {{ m['frequency'] }}</li>
+      {% endfor %}
+    </ul>
+    {% if avg_sys %}
+      <p class="mt-2 text-muted small">
+        Average systolic: {{ "%.1f"|format(avg_sys) }} mmHg
+      </p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="row my-3">
+  <div class="col-md-6">
+    <h5>Recent Symptom Notes</h5>
+    {% if symptoms %}
+      <ul class="small">
+        {% for s in symptoms %}
+          <li>{{ s['timestamp'] }} – {{ s['note'] }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-muted small">No symptom notes yet.</p>
+    {% endif %}
+
+    <h6 class="mt-3">Access log (audit trail)</h6>
+    {% if accesses %}
+      <ul class="small">
+        {% for a in accesses %}
+          <li>{{ a['timestamp'] }} – {{ a['actor'] }} ({{ a['role'] }}) viewed record</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-muted small">No access recorded.</p>
+    {% endif %}
+  </div>
+
+  <div class="col-md-6">
+    <h5>Care Plan</h5>
+    <form method="POST" action="{{ url_for('update_care_plan', patient_id=patient['patient_id']) }}">
+      <textarea class="form-control" name="care_plan" rows="5"
+        placeholder="e.g., Recheck BP in 2 weeks, reinforce low-sodium diet.">{{ patient['care_plan'] or '' }}</textarea>
+      <button class="btn btn-sm btn-primary mt-2" type="submit">Save care plan</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+  const chartLabels = {{ labels | tojson }};
+  const chartSystolic = {{ systolic | tojson }};
+  const chartDiastolic = {{ diastolic | tojson }};
+
+  const ctx = document.getElementById('bpChart').getContext('2d');
+
+  (function () {
+    const bpChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: chartLabels,
+        datasets: [
+          {
+            label: 'Systolic',
+            data: chartSystolic,
+          },
+          {
+            label: 'Diastolic',
+            data: chartDiastolic,
+          }
+        ]
+      }
+    });
+  })();
+</script>
+{% endblock %}
