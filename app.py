@@ -1,5 +1,6 @@
 # app.py
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+from flask_cors import CORS
 from datetime import datetime, timedelta
 import sqlite3
 from datetime import datetime
@@ -10,6 +11,8 @@ from google.cloud import vision # Vision API
 
 app = Flask(__name__)
 app.secret_key = "dev-secret" # demo
+CORS(app, resources={r"/api/*": {"origins": "*"}})  # /api로 시작하는 모든 엔드포인트에 CORS 허용
+
 
 DB_PATH = "carelink.db"
 
@@ -425,3 +428,128 @@ def update_conditions(patient_id):
     conn.commit()
     conn.close()
     return redirect(url_for("patient_dashboard", patient_id=patient_id))
+
+@app.route("/api/patient/<patient_id>")
+def api_patient(patient_id):
+    conn = get_db()
+    cur = conn.cursor()
+
+    # 1) patient 기본 정보
+    cur.execute("SELECT * FROM patients WHERE patient_id = ?", (patient_id,))
+    patient = cur.fetchone()
+
+    # 2) 최근 혈압 10개
+    cur.execute("""
+        SELECT * FROM bp_readings
+        WHERE patient_id = ?
+        ORDER BY timestamp DESC
+        LIMIT 10
+    """, (patient_id,))
+    readings = cur.fetchall()
+
+    # 3) 약 리스트
+    cur.execute("""
+        SELECT * FROM medications
+        WHERE patient_id = ?
+    """, (patient_id,))
+    meds = cur.fetchall()
+
+    # 4) 증상 로그 최근 3개
+    cur.execute("""
+        SELECT * FROM symptom_logs
+        WHERE patient_id = ?
+        ORDER BY timestamp DESC
+        LIMIT 3
+    """, (patient_id,))
+    symptoms = cur.fetchall()
+
+    # 5) 접근 로그 최근 5개
+    cur.execute("""
+        SELECT * FROM access_logs
+        WHERE patient_id = ?
+        ORDER BY timestamp DESC
+        LIMIT 5
+    """, (patient_id,))
+    accesses = cur.fetchall()
+
+    conn.close()
+
+    return jsonify({
+        "patient": dict(patient) if patient else None,
+        "readings": [dict(r) for r in readings],
+        "medications": [dict(m) for m in meds],
+        "symptoms": [dict(s) for s in symptoms],
+        "accesses": [dict(a) for a in accesses],
+    })
+
+@app.route("/api/patient/<patient_id>/bp", methods=["POST"])
+def api_add_bp(patient_id):
+    data = request.get_json()
+    systolic = data.get("systolic")
+    diastolic = data.get("diastolic")
+    heart_rate = data.get("heart_rate")
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO bp_readings (patient_id, systolic, diastolic, heart_rate, timestamp)
+        VALUES (?, ?, ?, ?, datetime('now'))
+    """, (patient_id, systolic, diastolic, heart_rate))
+    conn.commit()
+    conn.close()
+
+    return jsonify({"ok": True})
+
+@app.route("/api/patient/<patient_id>/med", methods=["POST"])
+def api_add_med(patient_id):
+    data = request.get_json()
+    print("API ADD MED JSON:", data)  # 디버깅용
+
+    name = data.get("name")
+    dose = data.get("dose")
+    freq = data.get("frequency")   # ★ 여기 key 이름 중요
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO medications (patient_id, name, dose, frequency)
+        VALUES (?, ?, ?, ?)
+    """, (patient_id, name, dose, freq))
+    conn.commit()
+    conn.close()
+
+    return jsonify({"ok": True})
+
+@app.route("/api/patient/<patient_id>/symptom", methods=["POST"])
+def api_add_symptom(patient_id):
+    data = request.get_json()
+    note = data.get("note")
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO symptom_logs (patient_id, note, timestamp)
+        VALUES (?, ?, datetime('now'))
+    """, (patient_id, note))
+    conn.commit()
+    conn.close()
+
+    return jsonify({"ok": True})
+
+@app.route("/api/patient/<patient_id>/conditions", methods=["POST"])
+def api_update_conditions(patient_id):
+    data = request.get_json()
+    selected = data.get("conditions", [])   # ["HTN","DM"]
+    value = ",".join(selected)
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE patients
+        SET conditions = ?
+        WHERE patient_id = ?
+    """, (value, patient_id))
+    conn.commit()
+    conn.close()
+
+    return jsonify({"ok": True})
