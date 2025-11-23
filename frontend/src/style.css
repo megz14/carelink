@@ -1,0 +1,189 @@
+:root {
+  --sapphire: #074DB1;
+  --emerald: #23BF6A;
+  --white: #FCFBFC;
+  --steel-blue: #2C7DD0;
+}
+
+body {
+  font-size: 14px;
+  background-color: var(--white) !important;
+  color: #333;
+}
+
+.card h5 {
+  margin-bottom: 0.75rem;
+  color: var(--sapphire);
+  font-weight: 600;
+}
+
+/* Navbar styling */
+.navbar {
+  background-color: var(--sapphire) !important;
+  border-bottom: 2px solid var(--steel-blue) !important;
+}
+
+.navbar-brand {
+  color: var(--white) !important;
+  font-weight: 600;
+}
+
+/* Logo container styling with white round background */
+.navbar-brand > div {
+  transition: all 0.3s ease;
+}
+
+.navbar-brand:hover > div {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+  transform: translateY(-2px) scale(1.05);
+}
+
+.navbar .text-muted {
+  color: rgba(252, 251, 252, 0.8) !important;
+}
+
+/* Button styling */
+.btn-primary {
+  background-color: var(--sapphire);
+  border-color: var(--sapphire);
+  color: var(--white);
+}
+
+.btn-primary:hover {
+  background-color: var(--steel-blue);
+  border-color: var(--steel-blue);
+  color: var(--white);
+}
+
+.btn-success {
+  background-color: var(--emerald);
+  border-color: var(--emerald);
+  color: var(--white);
+}
+
+.btn-success:hover {
+  background-color: #1ea857;
+  border-color: #1ea857;
+  color: var(--white);
+}
+
+.btn-outline-primary {
+  color: var(--sapphire);
+  border-color: var(--sapphire);
+}
+
+.btn-outline-primary:hover {
+  background-color: var(--sapphire);
+  border-color: var(--sapphire);
+  color: var(--white);
+}
+
+.btn-outline-secondary {
+  color: var(--steel-blue);
+  border-color: var(--steel-blue);
+}
+
+.btn-outline-secondary:hover {
+  background-color: var(--steel-blue);
+  border-color: var(--steel-blue);
+  color: var(--white);
+}
+
+/* Card styling */
+.card {
+  border: 1px solid rgba(7, 77, 177, 0.1);
+  box-shadow: 0 2px 4px rgba(7, 77, 177, 0.05);
+}
+
+.card-header {
+  background-color: rgba(7, 77, 177, 0.05);
+  border-bottom: 1px solid rgba(7, 77, 177, 0.1);
+}
+
+/* Link styling */
+a {
+  color: var(--sapphire);
+}
+
+a:hover {
+  color: var(--steel-blue);
+}
+
+/* Form controls */
+.form-control:focus {
+  border-color: var(--steel-blue);
+  box-shadow: 0 0 0 0.2rem rgba(44, 125, 208, 0.25);
+}
+
+.form-check-input:checked {
+  background-color: var(--sapphire);
+  border-color: var(--sapphire);
+}
+
+.form-switch .form-check-input:checked {
+  background-color: var(--emerald);
+  border-color: var(--emerald);
+}
+
+/* Alert styling */
+.alert-info {
+  background-color: rgba(7, 77, 177, 0.1);
+  border-color: var(--steel-blue);
+  color: var(--sapphire);
+}
+
+.alert-success {
+  background-color: rgba(35, 191, 106, 0.1);
+  border-color: var(--emerald);
+  color: #1a8f52;
+}
+
+.alert-warning {
+  background-color: rgba(255, 193, 7, 0.1);
+  border-color: #ffc107;
+  color: #856404;
+}
+
+.alert-danger {
+  background-color: rgba(220, 53, 69, 0.1);
+  border-color: #dc3545;
+  color: #721c24;
+}
+
+/* Badge styling */
+.badge.bg-primary {
+  background-color: var(--sapphire) !important;
+}
+
+.badge.bg-danger {
+  background-color: #dc3545 !important;
+}
+
+.badge.bg-warning {
+  background-color: #ffc107 !important;
+  color: #000 !important;
+}
+
+/* Chart colors */
+.chart-container {
+  background-color: var(--white);
+}
+
+/* Table styling */
+.table thead th {
+  background-color: rgba(7, 77, 177, 0.05);
+  color: var(--sapphire);
+  border-bottom: 2px solid var(--steel-blue);
+}
+
+/* Background override */
+.bg-light {
+  background-color: var(--white) !important;
+}
+
+.bg-white {
+  background-color: var(--white) !important;
+}
+
+
+

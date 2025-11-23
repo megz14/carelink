@@ -1,5 +1,5 @@
 # app.py
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, send_from_directory
 from flask_cors import CORS
 from datetime import datetime, timedelta
 import sqlite3
@@ -11,7 +11,15 @@ from google.cloud import vision # Vision API
 
 app = Flask(__name__)
 app.secret_key = "dev-secret" # demo
-CORS(app, resources={r"/api/*": {"origins": "*"}})  # /api로 시작하는 모든 엔드포인트에 CORS 허용
+# Configure CORS to allow credentials for session cookies
+CORS(app, 
+     resources={r"/api/*": {
+         "origins": ["http://localhost:3000", "http://127.0.0.1:3000"],
+         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+         "allow_headers": ["Content-Type", "Authorization"],
+         "supports_credentials": True
+     }}, 
+     supports_credentials=True)
 
 
 DB_PATH = "carelink.db"
@@ -42,7 +50,11 @@ def extract_text_from_image_bytes(image_bytes):
 
 @app.route("/")
 def home():
-    # 데모용 간단 랜딩 페이지
+    # In development, React dev server handles this
+    # In production, serve React build
+    if os.path.exists('static/react/index.html'):
+        return send_from_directory('static/react', 'index.html')
+    # Fallback to template for backward compatibility
     return render_template("index.html")
 
 
@@ -438,6 +450,10 @@ def api_patient(patient_id):
     cur.execute("SELECT * FROM patients WHERE patient_id = ?", (patient_id,))
     patient = cur.fetchone()
 
+    if not patient:
+        conn.close()
+        return jsonify({"error": "Patient not found"}), 404
+
     # 2) 최근 혈압 10개
     cur.execute("""
         SELECT * FROM bp_readings
@@ -475,7 +491,7 @@ def api_patient(patient_id):
     conn.close()
 
     return jsonify({
-        "patient": dict(patient) if patient else None,
+        "patient": dict(patient),
         "readings": [dict(r) for r in readings],
         "medications": [dict(m) for m in meds],
         "symptoms": [dict(s) for s in symptoms],
@@ -553,3 +569,255 @@ def api_update_conditions(patient_id):
     conn.close()
 
     return jsonify({"ok": True})
+
+# API routes for React frontend
+@app.route("/api/patient/<patient_id>/consent", methods=["POST"])
+def api_update_consent(patient_id):
+    if request.is_json:
+        data = request.json
+        consent = 1 if (data.get("consent") == "on" or data.get("consent") is True) else 0
+    else:
+        consent = 1 if request.form.get("consent") == "on" else 0
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE patients SET consent = ? WHERE patient_id = ?", (consent, patient_id))
+    conn.commit()
+    conn.close()
+
+    return jsonify({"ok": True})
+
+@app.route("/api/pharm/login", methods=["POST", "OPTIONS"])
+def api_pharm_login():
+    # Handle CORS preflight
+    if request.method == 'OPTIONS':
+        response = jsonify({})
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
+    
+    # Debug logging
+    print("=" * 50)
+    print("LOGIN REQUEST RECEIVED!")
+    print(f"Request method: {request.method}")
+    print(f"Is JSON: {request.is_json}")
+    print(f"Content-Type: {request.content_type}")
+    print(f"Request data: {request.get_data()}")
+    print(f"Request headers: {dict(request.headers)}")
+    
+    if request.is_json:
+        data = request.json
+        user = data.get("username")
+        pw = data.get("password")
+    else:
+        user = request.form.get("username")
+        pw = request.form.get("password")
+
+    # Debug: print received credentials
+    print(f"Received username: '{user}' (type: {type(user)})")
+    print(f"Received password: '{pw}' (type: {type(pw)})")
+    print(f"Username match: {user == 'pharm01'}")
+    print(f"Password match: {pw == 'test123'}")
+
+    # Strip whitespace and compare
+    user_clean = user.strip() if user else ""
+    pw_clean = pw.strip() if pw else ""
+
+    if user_clean == "pharm01" and pw_clean == "test123":
+        session["pharm_logged_in"] = True
+        print("Login successful, session set")
+        return jsonify({"ok": True, "message": "Login successful"})
+    
+    print("Login failed - invalid credentials")
+    return jsonify({"error": "Invalid credentials"}), 401
+
+# Test route to verify proxy is working
+@app.route("/api/test", methods=["GET"])
+def api_test():
+    print("TEST ROUTE HIT!")
+    return jsonify({"message": "Proxy is working!", "status": "ok"})
+
+@app.route("/api/pharm/dashboard", methods=["GET"])
+def api_pharm_dashboard():
+    if not session.get("pharm_logged_in"):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM patients")
+    patients = cur.fetchall()
+    conn.close()
+
+    return jsonify({
+        "patients": [dict(p) for p in patients]
+    })
+
+@app.route("/api/pharm/patient/<patient_id>", methods=["GET"])
+def api_pharm_view_patient(patient_id):
+    if not session.get("pharm_logged_in"):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT * FROM patients WHERE patient_id = ?", (patient_id,))
+    patient = cur.fetchone()
+
+    if not patient["consent"]:
+        conn.close()
+        print(f"403: Patient {patient_id} has no consent (consent={patient['consent']})")
+        return jsonify({
+            "error": "No consent",
+            "message": "Patient has not given consent to share data",
+            "patient": dict(patient)
+        }), 403
+
+    cur.execute("""
+        SELECT * FROM bp_readings
+        WHERE patient_id = ?
+        ORDER BY timestamp ASC
+    """, (patient_id,))
+    readings = cur.fetchall()
+
+    cur.execute("""
+        SELECT * FROM medications
+        WHERE patient_id = ?
+    """, (patient_id,))
+    meds = cur.fetchall()
+
+    cur.execute("""
+        SELECT * FROM symptom_logs
+        WHERE patient_id = ?
+        ORDER BY timestamp DESC
+        LIMIT 3
+    """, (patient_id,))
+    symptoms = cur.fetchall()
+
+    cur.execute("""
+        INSERT INTO access_logs (patient_id, actor, role, timestamp)
+        VALUES (?, ?, ?, ?)
+    """, (patient_id, "pharm01", "pharmacist", datetime.now()))
+    conn.commit()
+
+    cur.execute("""
+        SELECT * FROM access_logs
+        WHERE patient_id = ?
+        ORDER BY timestamp DESC
+        LIMIT 5
+    """, (patient_id,))
+    accesses = cur.fetchall()
+
+    conn.close()
+
+    # Calculate metrics
+    labels = [r["timestamp"] for r in readings]
+    systolic = [r["systolic"] for r in readings]
+    diastolic = [r["diastolic"] for r in readings]
+
+    med_count = len(meds)
+    avg_sys = sum(systolic) / len(systolic) if systolic else None
+
+    last_bp_time = None
+    if readings:
+        last_bp_time = datetime.fromisoformat(readings[-1]["timestamp"]) if isinstance(readings[-1]["timestamp"], str) else None
+
+    mtm_score = 0
+    mtm_level = "Low"
+
+    if med_count >= 5:
+        mtm_score += 2
+    if avg_sys and avg_sys > 140:
+        mtm_score += 2
+    if last_bp_time:
+        days_since_bp = (datetime.now() - last_bp_time).days
+        if days_since_bp >= 90:
+            mtm_score += 1
+
+    if mtm_score >= 4:
+        mtm_level = "High"
+    elif mtm_score >= 2:
+        mtm_level = "Moderate"
+
+    bp_status = None
+    bp_status_class = None
+    if avg_sys:
+        if avg_sys < 130:
+            bp_status = "At goal (<130 mmHg)"
+            bp_status_class = "success"
+        elif avg_sys <= 140:
+            bp_status = "Borderline control (130–140 mmHg)"
+            bp_status_class = "warning"
+        else:
+            bp_status = "Above target (>140 mmHg)"
+            bp_status_class = "danger"
+
+    review_due = False
+    last_med_review = patient["last_med_review"]
+    if med_count >= 5:
+        if not last_med_review:
+            review_due = True
+        else:
+            try:
+                last_review_dt = datetime.fromisoformat(last_med_review)
+                if (datetime.now() - last_review_dt).days >= 180:
+                    review_due = True
+            except Exception:
+                review_due = True
+
+    return jsonify({
+        "patient": dict(patient),
+        "readings": [dict(r) for r in readings],
+        "meds": [dict(m) for m in meds],
+        "symptoms": [dict(s) for s in symptoms],
+        "accesses": [dict(a) for a in accesses],
+        "labels": labels,
+        "systolic": systolic,
+        "diastolic": diastolic,
+        "avg_sys": avg_sys,
+        "mtm_score": mtm_score,
+        "mtm_level": mtm_level,
+        "bp_status": bp_status,
+        "bp_status_class": bp_status_class,
+        "review_due": review_due,
+    })
+
+@app.route("/api/pharm/patient/<patient_id>/mark_review", methods=["POST"])
+def api_mark_med_review(patient_id):
+    if not session.get("pharm_logged_in"):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE patients
+        SET last_med_review = ?
+        WHERE patient_id = ?
+    """, (datetime.now().isoformat(), patient_id))
+    conn.commit()
+    conn.close()
+
+    return jsonify({"ok": True})
+
+@app.route("/api/pharm/patient/<patient_id>/care_plan", methods=["POST"])
+def api_update_care_plan(patient_id):
+    if not session.get("pharm_logged_in"):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    if request.is_json:
+        data = request.json
+        care_plan = data.get("care_plan", "")
+    else:
+        care_plan = request.form.get("care_plan") or ""
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE patients SET care_plan = ? WHERE patient_id = ?", (care_plan, patient_id))
+    conn.commit()
+    conn.close()
+
+    return jsonify({"ok": True})
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5000)
